@@ -65,10 +65,57 @@ if ($filesToProcess.Count -eq 0) {
     return
 }
 
+Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+
+# Attempt to extract EXIF Date Taken (DateTimeOriginal/DateTimeDigitized) for photo files
+function Get-ExifDateTaken([string]$filePath) {
+    try {
+        $fileStream = [System.IO.File]::Open($filePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        try {
+            $img = [System.Drawing.Image]::FromStream($fileStream, $false, $false)
+            try {
+                # 36867 = DateTimeOriginal, 36868 = DateTimeDigitized, 306 = DateTime
+                $propIds = @(36867, 36868, 306)
+                foreach ($id in $propIds) {
+                    if ($img.PropertyIdList -contains $id) {
+                        $prop = $img.GetPropertyItem($id)
+                        if ($prop -and $prop.Value) {
+                            $dateStr = [System.Text.Encoding]::ASCII.GetString($prop.Value).Trim(" `t`r`n`0")
+                            $parsedDate = [datetime]::MinValue
+                            if ([datetime]::TryParseExact($dateStr, "yyyy:MM:dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$parsedDate)) {
+                                return $parsedDate
+                            }
+                            if ([datetime]::TryParse($dateStr, [ref]$parsedDate)) {
+                                return $parsedDate
+                            }
+                        }
+                    }
+                }
+            } finally {
+                $img.Dispose()
+            }
+        } finally {
+            $fileStream.Dispose()
+        }
+    } catch {
+        # Silently fall back if EXIF is missing, corrupt, or unreadable
+    }
+    return $null
+}
+
 # Determine new names and resolve collisions (existing filenames are kept in $usedNames to prevent overwriting or race conditions)
 foreach ($file in $filesToProcess) {
     $ext = $file.Extension.ToLower()
-    $baseTimestamp = $file.LastWriteTime.ToString("yyyy-MM-dd_HH-mm-ss")
+    
+    $timestampDate = $null
+    if ($ext -eq ".jpg" -or $ext -eq ".jpeg") {
+        $timestampDate = Get-ExifDateTaken -filePath $file.FullName
+    }
+    if ($null -eq $timestampDate) {
+        $timestampDate = $file.LastWriteTime
+    }
+    
+    $baseTimestamp = $timestampDate.ToString("yyyy-MM-dd_HH-mm-ss")
     $targetName = "${baseTimestamp}${ext}"
     
     $isCollision = $false

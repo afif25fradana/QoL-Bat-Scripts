@@ -22,13 +22,13 @@ Write-Host "Target Folder: $targetDir`n" -ForegroundColor Gray
 
 # Category Mapping
 $categoryMapping = [ordered]@{
-    "Documents"  = @(".pdf", ".doc", ".docx", ".xlsx", ".xls", ".ppt", ".pptx", ".txt", ".csv", ".rtf", ".odt")
+    "Documents"  = @(".pdf", ".doc", ".docx", ".xlsx", ".xls", ".ppt", ".pptx", ".txt", ".csv", ".rtf", ".odt", ".epub", ".mobi", ".tsv", ".docm", ".xlsm")
     "Tech Doc"   = @(".html", ".htm", ".json", ".md")
-    "Compressed" = @(".zip", ".rar", ".7z", ".tar", ".gz")
-    "Programs"   = @(".exe", ".msi", ".mcaddon", ".mcpack")
-    "Movie&TV"   = @(".mp4", ".mkv", ".avi", ".mov", ".webm", ".ts")
+    "Compressed" = @(".zip", ".rar", ".7z", ".tar", ".gz", ".iso", ".xz", ".bz2", ".tgz")
+    "Programs"   = @(".exe", ".msi", ".mcaddon", ".mcpack", ".apk", ".appx", ".msix", ".jar")
+    "Videos"     = @(".mp4", ".mkv", ".avi", ".mov", ".webm", ".ts", ".3gp", ".m4v", ".wmv", ".flv")
     "Music"      = @(".mp3", ".wav", ".flac", ".opus", ".m4a", ".ogg", ".aac")
-    "Images"     = @(".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".avif")
+    "Images"     = @(".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".avif", ".ico", ".heic", ".heif", ".tiff", ".tif", ".raw")
 }
 
 # Resolve running script path to exclude itself
