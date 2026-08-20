@@ -37,13 +37,28 @@ if ($env:SCRIPT_PATH -and (Test-Path -LiteralPath $env:SCRIPT_PATH)) {
     $runningScriptPath = (Get-Item -LiteralPath $env:SCRIPT_PATH).FullName
 }
 
+# Files and extensions to ignore (companion scripts, system files, shortcuts, version control)
+$ignoredFileNames = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]]@("desktop.ini", "Thumbs.db", ".gitignore", ".gitattributes", ".gitmodules"),
+    [System.StringComparer]::OrdinalIgnoreCase
+)
+$ignoredExtensions = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]]@(".bat", ".cmd", ".ps1", ".sh", ".lnk", ".url"),
+    [System.StringComparer]::OrdinalIgnoreCase
+)
+
 # Get loose files directly in the root of target folder (non-recursive)
 $allLooseFiles = @(Get-ChildItem -LiteralPath $targetDir -File | Where-Object {
-    if ($runningScriptPath) {
-        $_.FullName -ne $runningScriptPath
-    } else {
-        $true
+    if ($runningScriptPath -and $_.FullName -eq $runningScriptPath) {
+        return $false
     }
+    if ($ignoredFileNames.Contains($_.Name)) {
+        return $false
+    }
+    if ($ignoredExtensions.Contains($_.Extension)) {
+        return $false
+    }
+    return $true
 })
 
 if ($allLooseFiles.Count -eq 0) {
@@ -95,13 +110,15 @@ foreach ($file in $allLooseFiles) {
     if ($usedSet.Contains($targetName)) {
         $isCollision = $true
         $suffix = 1
-        while ($usedSet.Contains("${baseName}_${suffix}${rawExt}")) {
+        $candidateName = if ([string]::IsNullOrEmpty($baseName)) { "${targetName}_${suffix}" } else { "${baseName}_${suffix}${rawExt}" }
+        while ($usedSet.Contains($candidateName)) {
             $suffix++
+            $candidateName = if ([string]::IsNullOrEmpty($baseName)) { "${targetName}_${suffix}" } else { "${baseName}_${suffix}${rawExt}" }
         }
-        $targetName = "${baseName}_${suffix}${rawExt}"
+        $targetName = $candidateName
         $totalCollisions++
     }
-    
+
     $usedSet.Add($targetName) | Out-Null
     $categoryCounts[$category]++
     

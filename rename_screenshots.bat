@@ -65,12 +65,7 @@ if ($filesToProcess.Count -eq 0) {
     return
 }
 
-# Remove the files we are going to rename from the usedNames set
-foreach ($file in $filesToProcess) {
-    $usedNames.Remove($file.Name) | Out-Null
-}
-
-# Determine new names and resolve collisions
+# Determine new names and resolve collisions (existing filenames are kept in $usedNames to prevent overwriting or race conditions)
 foreach ($file in $filesToProcess) {
     $ext = $file.Extension.ToLower()
     $baseTimestamp = $file.LastWriteTime.ToString("yyyy-MM-dd_HH-mm-ss")
@@ -132,6 +127,9 @@ $errors = [System.Collections.Generic.List[string]]::new()
 Write-Host "`nRenaming files..." -ForegroundColor Gray
 
 foreach ($item in $plan) {
+    if ($item.OldName -ieq $item.NewName) {
+        continue
+    }
     try {
         Rename-Item -LiteralPath $item.File.FullName -NewName $item.NewName -ErrorAction Stop
         $renamedCount++
