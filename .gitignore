@@ -1,0 +1,11 @@
+# Test environments
+test_*/
+test_*_env/
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+.vscode/
+.idea/
