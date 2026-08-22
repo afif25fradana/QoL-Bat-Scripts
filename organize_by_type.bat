@@ -12,7 +12,8 @@ $ErrorActionPreference = "Stop"
 # Target directory is the folder where this .bat file resides
 $targetDir = Split-Path -Parent $env:SCRIPT_PATH
 if (-not $targetDir -or -not (Test-Path -LiteralPath $targetDir)) {
-    $targetDir = (Get-Location).Path
+    Write-Host "CRITICAL ERROR: Cannot determine the script's directory securely. Execution aborted." -ForegroundColor Red
+    return
 }
 
 Write-Host "==========================================================" -ForegroundColor DarkGray
@@ -28,7 +29,7 @@ $categoryMapping = [ordered]@{
     "Programs"   = @(".exe", ".msi", ".mcaddon", ".mcpack", ".apk", ".appx", ".msix", ".jar")
     "Videos"     = @(".mp4", ".mkv", ".avi", ".mov", ".webm", ".ts", ".3gp", ".m4v", ".wmv", ".flv")
     "Music"      = @(".mp3", ".wav", ".flac", ".opus", ".m4a", ".ogg", ".aac")
-    "Images"     = @(".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".avif", ".ico", ".heic", ".heif", ".tiff", ".tif", ".raw")
+    "Images"     = @(".png", ".jpg", ".jpeg", ".jfif", ".gif", ".webp", ".svg", ".bmp", ".avif", ".ico", ".heic", ".heif", ".tiff", ".tif", ".raw")
 }
 
 # Resolve running script path to exclude itself
@@ -74,7 +75,7 @@ $usedNamesPerCategory = @{}
 foreach ($cat in $allCategories) {
     $set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $catDir = Join-Path -Path $targetDir -ChildPath $cat
-    if (Test-Path -LiteralPath $catDir) {
+    if (Test-Path -LiteralPath $catDir -PathType Container) {
         Get-ChildItem -LiteralPath $catDir -File | ForEach-Object {
             $set.Add($_.Name) | Out-Null
         }
@@ -187,7 +188,7 @@ Write-Host "`nMoving files..." -ForegroundColor Gray
 foreach ($item in $plan) {
     try {
         $destDir = Join-Path -Path $targetDir -ChildPath $item.Category
-        if (-not (Test-Path -LiteralPath $destDir)) {
+        if (-not (Test-Path -LiteralPath $destDir -PathType Container)) {
             [System.IO.Directory]::CreateDirectory($destDir) | Out-Null
         }
         $destPath = Join-Path -Path $destDir -ChildPath $item.TargetFileName

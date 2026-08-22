@@ -21,7 +21,7 @@ Automatically organizes loose files in any directory (such as `Downloads`, `Desk
   - **Programs**: `.exe`, `.msi`, `.mcaddon`, `.mcpack`, `.apk`, `.appx`, `.msix`, `.jar`
   - **Videos**: `.mp4`, `.mkv`, `.avi`, `.mov`, `.webm`, `.ts`, `.3gp`, `.m4v`, `.wmv`, `.flv`
   - **Music**: `.mp3`, `.wav`, `.flac`, `.opus`, `.m4a`, `.ogg`, `.aac`
-  - **Images**: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`, `.bmp`, `.avif`, `.ico`, `.heic`, `.heif`, `.tiff`, `.tif`, `.raw`
+  - **Images**: `.png`, `.jpg`, `.jpeg`, `.jfif`, `.gif`, `.webp`, `.svg`, `.bmp`, `.avif`, `.ico`, `.heic`, `.heif`, `.tiff`, `.tif`, `.raw`
   - **Others**: Unrecognized file extensions
 - Automatically ignores companion scripts (`.bat`, `.cmd`, `.ps1`, `.sh`), shortcuts (`.lnk`, `.url`), git files (`.gitignore`, etc.), and OS metadata (`desktop.ini`, `Thumbs.db`).
 - Resolves destination name collisions automatically by appending numeric suffixes (`_1`, `_2`, etc.).

@@ -12,7 +12,8 @@ $ErrorActionPreference = "Stop"
 # Target directory is the folder where this .bat file resides
 $targetDir = Split-Path -Parent $env:SCRIPT_PATH
 if (-not $targetDir -or -not (Test-Path -LiteralPath $targetDir)) {
-    $targetDir = (Get-Location).Path
+    Write-Host "CRITICAL ERROR: Cannot determine the script's directory securely. Execution aborted." -ForegroundColor Red
+    return
 }
 
 Write-Host "==========================================================" -ForegroundColor DarkGray
@@ -42,10 +43,10 @@ $plan = [System.Collections.Generic.List[PSCustomObject]]::new()
 $skippedCount = 0
 $collisionCount = 0
 
-# Track target filenames to prevent in-batch collisions and collisions with existing files
+# Track target filenames to prevent in-batch collisions and collisions with existing files/folders
 $usedNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-foreach ($f in $allFiles) {
-    $usedNames.Add($f.Name) | Out-Null
+Get-ChildItem -LiteralPath $targetDir | ForEach-Object {
+    $usedNames.Add($_.Name) | Out-Null
 }
 
 $filesToProcess = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
@@ -83,19 +84,23 @@ function Get-ExifDateTaken([string]$filePath) {
                             $dateStr = [System.Text.Encoding]::ASCII.GetString($prop.Value).Trim(" `t`r`n`0")
                             $parsedDate = [datetime]::MinValue
                             if ([datetime]::TryParseExact($dateStr, "yyyy:MM:dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$parsedDate)) {
-                                return $parsedDate
+                                if ($parsedDate.Year -ge 1990) {
+                                    return $parsedDate
+                                }
                             }
                             if ([datetime]::TryParse($dateStr, [ref]$parsedDate)) {
-                                return $parsedDate
+                                if ($parsedDate.Year -ge 1990) {
+                                    return $parsedDate
+                                }
                             }
                         }
                     }
                 }
             } finally {
-                $img.Dispose()
+                if ($null -ne $img) { $img.Dispose() }
             }
         } finally {
-            $fileStream.Dispose()
+            if ($null -ne $fileStream) { $fileStream.Dispose() }
         }
     } catch {
         # Silently fall back if EXIF is missing, corrupt, or unreadable
