@@ -9,6 +9,19 @@ exit /b %ERRORLEVEL%
 
 $ErrorActionPreference = "Stop"
 
+function Test-ReservedName {
+    param([string]$Name)
+    if ([string]::IsNullOrEmpty($Name)) { return $false }
+    $stem = $Name.Split('.')[0]
+    if ([string]::IsNullOrEmpty($stem)) { return $false }
+    return ($stem -match '^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$')
+}
+
+function Get-SafeDisplayName {
+    param([string]$Name)
+    return ($Name -replace '[\x00-\x1F\x7F]', '?')
+}
+
 # Target directory is the folder where this .bat file resides
 $targetDir = Split-Path -Parent $env:SCRIPT_PATH
 if (-not $targetDir -or -not (Test-Path -LiteralPath $targetDir)) {
@@ -38,6 +51,14 @@ if ($env:SCRIPT_PATH -and (Test-Path -LiteralPath $env:SCRIPT_PATH)) {
     $runningScriptPath = (Get-Item -LiteralPath $env:SCRIPT_PATH).FullName
 }
 
+# Defense-in-depth: refuse to operate unless the script at $env:SCRIPT_PATH is a valid polyglot.
+# This prevents operating on a stale/forged SCRIPT_PATH when the PowerShell body is run standalone.
+if ($runningScriptPath -and (Get-Content -LiteralPath $runningScriptPath -TotalCount 1) -notmatch '^<# :') {
+    Write-Host "CRITICAL ERROR: '$runningScriptPath' is not a valid QoL script (missing polyglot header). Execution aborted." -ForegroundColor Red
+    Write-Host ""
+    return
+}
+
 # Files and extensions to ignore (companion scripts, system files, shortcuts, version control)
 $ignoredFileNames = [System.Collections.Generic.HashSet[string]]::new(
     [string[]]@("desktop.ini", "Thumbs.db", ".gitignore", ".gitattributes", ".gitmodules"),
@@ -49,6 +70,8 @@ $ignoredExtensions = [System.Collections.Generic.HashSet[string]]::new(
 )
 
 # Get loose files directly in the root of target folder (non-recursive)
+$skippedReservedNames = [System.Collections.Generic.List[string]]::new()
+$skippedReparsePoints = [System.Collections.Generic.List[string]]::new()
 $allLooseFiles = @(Get-ChildItem -LiteralPath $targetDir -File | Where-Object {
     if ($runningScriptPath -and $_.FullName -eq $runningScriptPath) {
         return $false
@@ -59,8 +82,32 @@ $allLooseFiles = @(Get-ChildItem -LiteralPath $targetDir -File | Where-Object {
     if ($ignoredExtensions.Contains($_.Extension)) {
         return $false
     }
+    if (Test-ReservedName -Name $_.Name) {
+        $skippedReservedNames.Add($_.Name)
+        return $false
+    }
+    if ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+        $skippedReparsePoints.Add($_.Name)
+        return $false
+    }
     return $true
 })
+
+# Report files skipped by safety filters
+if ($skippedReservedNames.Count -gt 0) {
+    Write-Host "SKIPPED (Windows reserved device name, cannot be moved):" -ForegroundColor DarkYellow
+    foreach ($name in $skippedReservedNames) {
+        Write-Host "  - $(Get-SafeDisplayName $name)" -ForegroundColor DarkYellow
+    }
+    Write-Host ""
+}
+if ($skippedReparsePoints.Count -gt 0) {
+    Write-Host "SKIPPED (symbolic link or junction, left in place):" -ForegroundColor DarkYellow
+    foreach ($name in $skippedReparsePoints) {
+        Write-Host "  - $(Get-SafeDisplayName $name)" -ForegroundColor DarkYellow
+    }
+    Write-Host ""
+}
 
 if ($allLooseFiles.Count -eq 0) {
     Write-Host "No loose files found in target folder to organize." -ForegroundColor DarkGreen
@@ -71,16 +118,29 @@ if ($allLooseFiles.Count -eq 0) {
 # Pre-load existing filenames in destination folders to detect collisions
 $allCategories = @($categoryMapping.Keys) + @("Others")
 $usedNamesPerCategory = @{}
+$categoryDirWarnings = [System.Collections.Generic.List[string]]::new()
 
 foreach ($cat in $allCategories) {
     $set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $catDir = Join-Path -Path $targetDir -ChildPath $cat
     if (Test-Path -LiteralPath $catDir -PathType Container) {
+        $dirItem = Get-Item -LiteralPath $catDir
+        if ($dirItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+            $categoryDirWarnings.Add("Destination folder '$cat' is a symbolic link/junction; moved files may end up outside '$targetDir'.")
+        }
         Get-ChildItem -LiteralPath $catDir -File | ForEach-Object {
             $set.Add($_.Name) | Out-Null
         }
     }
     $usedNamesPerCategory[$cat] = $set
+}
+
+if ($categoryDirWarnings.Count -gt 0) {
+    Write-Host "WARNING:" -ForegroundColor DarkYellow
+    foreach ($warning in $categoryDirWarnings) {
+        Write-Host "  - $warning" -ForegroundColor DarkYellow
+    }
+    Write-Host ""
 }
 
 $plan = [System.Collections.Generic.List[PSCustomObject]]::new()
@@ -141,9 +201,9 @@ foreach ($cat in $allCategories) {
         Write-Host "  [$cat] ($($itemsInCat.Count) file(s)):" -ForegroundColor DarkCyan
         foreach ($item in $itemsInCat) {
             $tag = if ($item.IsCollision) { " [Collision resolved]" } else { "" }
-            Write-Host "    $($item.OriginalName)" -NoNewline -ForegroundColor Gray
+            Write-Host "    $(Get-SafeDisplayName $item.OriginalName)" -NoNewline -ForegroundColor Gray
             Write-Host " -> " -NoNewline -ForegroundColor DarkGray
-            Write-Host "$($item.Category)/$($item.TargetFileName)" -NoNewline -ForegroundColor DarkCyan
+            Write-Host "$($item.Category)/$(Get-SafeDisplayName $item.TargetFileName)" -NoNewline -ForegroundColor DarkCyan
             if ($tag) {
                 Write-Host "$tag" -ForegroundColor DarkYellow
             } else {
@@ -196,7 +256,7 @@ foreach ($item in $plan) {
         $movedCount++
         $successCounts[$item.Category]++
     } catch {
-        $errors.Add("Failed to move '$($item.OriginalName)' to '$($item.Category)/$($item.TargetFileName)': $($_.Exception.Message)")
+        $errors.Add("Failed to move '$(Get-SafeDisplayName $item.OriginalName)' to '$($item.Category)/$(Get-SafeDisplayName $item.TargetFileName)': $($_.Exception.Message)")
     }
 }
 

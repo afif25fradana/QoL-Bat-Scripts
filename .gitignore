@@ -1,3 +1,6 @@
+# Agent instructions (local, not shared)
+AGENTS.md
+
 # Test environments
 test_*/
 test_*_env/

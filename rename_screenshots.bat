@@ -9,10 +9,31 @@ exit /b %ERRORLEVEL%
 
 $ErrorActionPreference = "Stop"
 
+function Test-ReservedName {
+    param([string]$Name)
+    if ([string]::IsNullOrEmpty($Name)) { return $false }
+    $stem = $Name.Split('.')[0]
+    if ([string]::IsNullOrEmpty($stem)) { return $false }
+    return ($stem -match '^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$')
+}
+
+function Get-SafeDisplayName {
+    param([string]$Name)
+    return ($Name -replace '[\x00-\x1F\x7F]', '?')
+}
+
 # Target directory is the folder where this .bat file resides
 $targetDir = Split-Path -Parent $env:SCRIPT_PATH
 if (-not $targetDir -or -not (Test-Path -LiteralPath $targetDir)) {
     Write-Host "CRITICAL ERROR: Cannot determine the script's directory securely. Execution aborted." -ForegroundColor Red
+    return
+}
+
+# Defense-in-depth: refuse to operate unless the script at $env:SCRIPT_PATH is a valid polyglot.
+# This prevents operating on a stale/forged SCRIPT_PATH when the PowerShell body is run standalone.
+if (($env:SCRIPT_PATH) -and (Test-Path -LiteralPath $env:SCRIPT_PATH) -and (Get-Content -LiteralPath $env:SCRIPT_PATH -TotalCount 1) -notmatch '^<# :') {
+    Write-Host "CRITICAL ERROR: '$env:SCRIPT_PATH' is not a valid QoL script (missing polyglot header). Execution aborted." -ForegroundColor Red
+    Write-Host ""
     return
 }
 
@@ -50,13 +71,26 @@ Get-ChildItem -LiteralPath $targetDir | ForEach-Object {
 }
 
 $filesToProcess = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
+$skippedReservedNames = [System.Collections.Generic.List[string]]::new()
 
 foreach ($file in $imageFiles) {
+    if (Test-ReservedName -Name $file.Name) {
+        $skippedReservedNames.Add($file.Name)
+        continue
+    }
     if ($file.Name -match $alreadyFormattedRegex) {
         $skippedCount++
     } else {
         $filesToProcess.Add($file)
     }
+}
+
+if ($skippedReservedNames.Count -gt 0) {
+    Write-Host "SKIPPED (Windows reserved device name, cannot be renamed):" -ForegroundColor DarkYellow
+    foreach ($name in $skippedReservedNames) {
+        Write-Host "  - $(Get-SafeDisplayName $name)" -ForegroundColor DarkYellow
+    }
+    Write-Host ""
 }
 
 if ($filesToProcess.Count -eq 0) {
@@ -66,7 +100,17 @@ if ($filesToProcess.Count -eq 0) {
     return
 }
 
-Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+$exifAvailable = $false
+try {
+    Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+    $exifAvailable = $null -ne (@([System.AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetName().Name -eq 'System.Drawing' }))
+} catch {
+    $exifAvailable = $false
+}
+if (-not $exifAvailable) {
+    Write-Host "NOTE: System.Drawing (GDI+) is unavailable - EXIF Date Taken cannot be read; using Last Modified time for all images." -ForegroundColor DarkYellow
+    Write-Host ""
+}
 
 # Attempt to extract EXIF Date Taken (DateTimeOriginal/DateTimeDigitized) for photo files
 function Get-ExifDateTaken([string]$filePath) {
@@ -148,9 +192,9 @@ foreach ($file in $filesToProcess) {
 Write-Host "PREVIEW OF PLANNED RENAMES ($($plan.Count) file(s)):`n" -ForegroundColor White
 foreach ($item in $plan) {
     $tag = if ($item.IsCollision) { " [Collision resolved]" } else { "" }
-    Write-Host "  $($item.OldName)" -NoNewline -ForegroundColor Gray
+    Write-Host "  $(Get-SafeDisplayName $item.OldName)" -NoNewline -ForegroundColor Gray
     Write-Host " -> " -NoNewline -ForegroundColor DarkGray
-    Write-Host "$($item.NewName)" -NoNewline -ForegroundColor DarkCyan
+    Write-Host "$(Get-SafeDisplayName $item.NewName)" -NoNewline -ForegroundColor DarkCyan
     if ($tag) {
         Write-Host "$tag" -ForegroundColor DarkYellow
     } else {
@@ -186,7 +230,7 @@ foreach ($item in $plan) {
         Rename-Item -LiteralPath $item.File.FullName -NewName $item.NewName -ErrorAction Stop
         $renamedCount++
     } catch {
-        $errors.Add("Failed to rename '$($item.OldName)': $($_.Exception.Message)")
+        $errors.Add("Failed to rename '$(Get-SafeDisplayName $item.OldName)': $($_.Exception.Message)")
     }
 }
 
