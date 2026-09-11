@@ -218,6 +218,7 @@ if ($null -eq $response -or $response.Trim() -notmatch '^(y|yes)$') {
 
 # Execute rename
 $renamedCount = 0
+$renamedItems = [System.Collections.Generic.List[PSCustomObject]]::new()
 $errors = [System.Collections.Generic.List[string]]::new()
 
 Write-Host "`nRenaming files..." -ForegroundColor Gray
@@ -229,6 +230,11 @@ foreach ($item in $plan) {
     try {
         Rename-Item -LiteralPath $item.File.FullName -NewName $item.NewName -ErrorAction Stop
         $renamedCount++
+        $newFullPath = Join-Path -Path $targetDir -ChildPath $item.NewName
+        $renamedItems.Add([PSCustomObject]@{
+            OldPath = $item.File.FullName
+            NewPath = $newFullPath
+        })
     } catch {
         $errors.Add("Failed to rename '$(Get-SafeDisplayName $item.OldName)': $($_.Exception.Message)")
     }
@@ -246,4 +252,48 @@ if ($errors.Count -gt 0) {
     }
 }
 Write-Host "==========================================================" -ForegroundColor DarkGray
+
+# Action Log
+if ($renamedCount -gt 0 -or $errors.Count -gt 0) {
+    $now = Get-Date
+    $logTimestamp = $now.ToString("yyyyMMdd_HHmmss")
+    $logFileName = "rename_log_${logTimestamp}.txt"
+    $logPath = Join-Path -Path $targetDir -ChildPath $logFileName
+    $logSuffix = 1
+    while (Test-Path -LiteralPath $logPath) {
+        $logFileName = "rename_log_${logTimestamp}_${logSuffix}.txt"
+        $logPath = Join-Path -Path $targetDir -ChildPath $logFileName
+        $logSuffix++
+    }
+
+    $sb = [System.Text.StringBuilder]::new()
+    $sb.AppendLine("rename_screenshots.bat - Run: $($now.ToString('yyyy-MM-dd HH:mm:ss'))") | Out-Null
+    $sb.AppendLine("Target folder: $targetDir") | Out-Null
+    $sb.AppendLine("Total renamed: $renamedCount | Errors: $($errors.Count)") | Out-Null
+    $sb.AppendLine() | Out-Null
+    $sb.AppendLine("[RENAMED]") | Out-Null
+    if ($renamedItems.Count -gt 0) {
+        foreach ($r in $renamedItems) {
+            $sb.AppendLine("  $($r.OldPath) -> $($r.NewPath)") | Out-Null
+        }
+    } else {
+        $sb.AppendLine("  (none)") | Out-Null
+    }
+    $sb.AppendLine() | Out-Null
+    $sb.AppendLine("[ERRORS]") | Out-Null
+    if ($errors.Count -gt 0) {
+        foreach ($err in $errors) {
+            $sb.AppendLine("  $err") | Out-Null
+        }
+    } else {
+        $sb.AppendLine("  (none)") | Out-Null
+    }
+
+    try {
+        [System.IO.File]::WriteAllText($logPath, $sb.ToString(), [System.Text.UTF8Encoding]::new($false))
+        Write-Host "`nAction log written to: $logFileName" -ForegroundColor DarkCyan
+    } catch {
+        Write-Host "`nWARNING: Failed to write action log to '$logFileName': $($_.Exception.Message)" -ForegroundColor DarkYellow
+    }
+}
 Write-Host ""

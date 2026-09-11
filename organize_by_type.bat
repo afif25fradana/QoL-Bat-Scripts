@@ -43,6 +43,7 @@ $categoryMapping = [ordered]@{
     "Videos"     = @(".mp4", ".mkv", ".avi", ".mov", ".webm", ".ts", ".3gp", ".m4v", ".wmv", ".flv")
     "Music"      = @(".mp3", ".wav", ".flac", ".opus", ".m4a", ".ogg", ".aac")
     "Images"     = @(".png", ".jpg", ".jpeg", ".jfif", ".gif", ".webp", ".svg", ".bmp", ".avif", ".ico", ".heic", ".heif", ".tiff", ".tif", ".raw")
+    "Fonts"      = @(".ttf", ".otf", ".woff", ".woff2")
 }
 
 # Resolve running script path to exclude itself
@@ -74,6 +75,9 @@ $skippedReservedNames = [System.Collections.Generic.List[string]]::new()
 $skippedReparsePoints = [System.Collections.Generic.List[string]]::new()
 $allLooseFiles = @(Get-ChildItem -LiteralPath $targetDir -File | Where-Object {
     if ($runningScriptPath -and $_.FullName -eq $runningScriptPath) {
+        return $false
+    }
+    if ($_.Name -match '^(organize_log_|rename_log_)\d{8}_\d{6}(_\d+)?\.txt$') {
         return $false
     }
     if ($ignoredFileNames.Contains($_.Name)) {
@@ -237,6 +241,7 @@ if ($null -eq $response -or $response.Trim() -notmatch '^(y|yes)$') {
 
 # Execute move
 $movedCount = 0
+$movedItems = [System.Collections.Generic.List[PSCustomObject]]::new()
 $errors = [System.Collections.Generic.List[string]]::new()
 $successCounts = [ordered]@{}
 foreach ($cat in $allCategories) {
@@ -255,6 +260,10 @@ foreach ($item in $plan) {
         Move-Item -LiteralPath $item.File.FullName -Destination $destPath -ErrorAction Stop
         $movedCount++
         $successCounts[$item.Category]++
+        $movedItems.Add([PSCustomObject]@{
+            Source      = $item.File.FullName
+            Destination = $destPath
+        })
     } catch {
         $errors.Add("Failed to move '$(Get-SafeDisplayName $item.OriginalName)' to '$($item.Category)/$(Get-SafeDisplayName $item.TargetFileName)': $($_.Exception.Message)")
     }
@@ -278,4 +287,48 @@ if ($errors.Count -gt 0) {
     }
 }
 Write-Host "==========================================================" -ForegroundColor DarkGray
+
+# Action Log
+if ($movedCount -gt 0 -or $errors.Count -gt 0) {
+    $now = Get-Date
+    $logTimestamp = $now.ToString("yyyyMMdd_HHmmss")
+    $logFileName = "organize_log_${logTimestamp}.txt"
+    $logPath = Join-Path -Path $targetDir -ChildPath $logFileName
+    $logSuffix = 1
+    while (Test-Path -LiteralPath $logPath) {
+        $logFileName = "organize_log_${logTimestamp}_${logSuffix}.txt"
+        $logPath = Join-Path -Path $targetDir -ChildPath $logFileName
+        $logSuffix++
+    }
+
+    $sb = [System.Text.StringBuilder]::new()
+    $sb.AppendLine("organize_by_type.bat - Run: $($now.ToString('yyyy-MM-dd HH:mm:ss'))") | Out-Null
+    $sb.AppendLine("Target folder: $targetDir") | Out-Null
+    $sb.AppendLine("Total moved: $movedCount | Errors: $($errors.Count)") | Out-Null
+    $sb.AppendLine() | Out-Null
+    $sb.AppendLine("[MOVED]") | Out-Null
+    if ($movedItems.Count -gt 0) {
+        foreach ($m in $movedItems) {
+            $sb.AppendLine("  $($m.Source) -> $($m.Destination)") | Out-Null
+        }
+    } else {
+        $sb.AppendLine("  (none)") | Out-Null
+    }
+    $sb.AppendLine() | Out-Null
+    $sb.AppendLine("[ERRORS]") | Out-Null
+    if ($errors.Count -gt 0) {
+        foreach ($err in $errors) {
+            $sb.AppendLine("  $err") | Out-Null
+        }
+    } else {
+        $sb.AppendLine("  (none)") | Out-Null
+    }
+
+    try {
+        [System.IO.File]::WriteAllText($logPath, $sb.ToString(), [System.Text.UTF8Encoding]::new($false))
+        Write-Host "`nAction log written to: $logFileName" -ForegroundColor DarkCyan
+    } catch {
+        Write-Host "`nWARNING: Failed to write action log to '$logFileName': $($_.Exception.Message)" -ForegroundColor DarkYellow
+    }
+}
 Write-Host ""
