@@ -25,7 +25,7 @@ function Get-SafeDisplayName {
 # Target directory is the folder where this .bat file resides
 $targetDir = Split-Path -Parent $env:SCRIPT_PATH
 if (-not $targetDir -or -not (Test-Path -LiteralPath $targetDir)) {
-    Write-Host "CRITICAL ERROR: Cannot determine the script's directory securely. Execution aborted." -ForegroundColor Red
+    Write-Host "Error: Could not determine the script directory." -ForegroundColor Red
     return
 }
 
@@ -52,10 +52,9 @@ if ($env:SCRIPT_PATH -and (Test-Path -LiteralPath $env:SCRIPT_PATH)) {
     $runningScriptPath = (Get-Item -LiteralPath $env:SCRIPT_PATH).FullName
 }
 
-# Defense-in-depth: refuse to operate unless the script at $env:SCRIPT_PATH is a valid polyglot.
-# This prevents operating on a stale/forged SCRIPT_PATH when the PowerShell body is run standalone.
+# Ensure SCRIPT_PATH points to this batch file before running
 if ($runningScriptPath -and (Get-Content -LiteralPath $runningScriptPath -TotalCount 1) -notmatch '^<# :') {
-    Write-Host "CRITICAL ERROR: '$runningScriptPath' is not a valid QoL script (missing polyglot header). Execution aborted." -ForegroundColor Red
+    Write-Host "Error: Script path '$runningScriptPath' is invalid or unreadable." -ForegroundColor Red
     Write-Host ""
     return
 }

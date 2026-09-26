@@ -2,10 +2,9 @@
 
 A collection of personal, lightweight Quality of Life (QoL) batch scripts for Windows.
 
-Both scripts are **safe and non-destructive by default**:
-- Always display a preview of planned actions and require an explicit `y/N` confirmation before touching any files.
-- Only process loose files directly in the target folder's root (where the `.bat` file is run).
-- Never recurse into subfolders and never touch anything outside the target folder, so existing organized folders or project folders are always safe.
+Both scripts show a preview and ask for confirmation before making changes:
+- You see exactly what will move or rename, then press `y` to confirm (or Enter to cancel).
+- Only loose files in the current folder are touched — never subfolders, and nothing is deleted.
 
 ---
 
@@ -25,7 +24,7 @@ Automatically organizes loose files in any directory (such as `Downloads`, `Desk
   - **Fonts**: `.ttf`, `.otf`, `.woff`, `.woff2`
   - **Others**: Unrecognized file extensions
 - Automatically ignores companion scripts (`.bat`, `.cmd`, `.ps1`, `.sh`), shortcuts (`.lnk`, `.url`), git files (`.gitignore`, etc.), OS metadata (`desktop.ini`, `Thumbs.db`), and previous run logs (`organize_log_*.txt`, `rename_log_*.txt`).
-- Skips Windows reserved device names (e.g. `con`, `nul`, `COM1`) and symbolic links/junctions, and warns if a destination category folder is a junction pointing outside the target folder.
+- Skips Windows reserved names (`con`, `nul`, etc.) and symlinks/junctions.
 - Resolves destination name collisions automatically by appending numeric suffixes (`_1`, `_2`, etc.).
 - Generates an action log (`organize_log_<timestamp>.txt`) in the target folder recording old and new paths for every item moved or failed.
 
@@ -43,10 +42,10 @@ Batch renames loose screenshots and image files based on their timestamp (`yyyy-
 
 ### What it does
 - Scans loose `.png`, `.jpg`, and `.jpeg` files and generates new names based on timestamp.
-- For `.jpg`/`.jpeg` photos, automatically reads EXIF `Date Taken` (`DateTimeOriginal`/`DateTimeDigitized`) if present, silently falling back to `Last Modified` time if EXIF is absent or unreadable.
+- For `.jpg`/`.jpeg` photos, reads EXIF `Date Taken` if present, falling back to `Last Modified` time if unavailable.
 - For `.png` files, renames based on `Last Modified` time.
 - Automatically skips files that already match the timestamp naming pattern.
-- Skips files using Windows reserved device names (e.g. `con`, `nul`), and warns if EXIF support (System.Drawing/GDI+) is unavailable so timestamps fall back to Last Modified time.
+- Skips Windows reserved names (`con`, `nul`, etc.).
 - Handles same-second timestamp collisions cleanly (`_1`, `_2`, etc.).
 - Generates an action log (`rename_log_<timestamp>.txt`) in the target folder recording old and new names for every item renamed or failed.
 
