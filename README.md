@@ -54,3 +54,9 @@ Batch renames loose screenshots and image files based on their timestamp (`yyyy-
 2. Double-click the `.bat` file to run it.
 3. Review the preview list showing `old_name -> new_timestamp_name`.
 4. Type `y` to confirm and rename the files, or press Enter/`n` to cancel safely without making any changes.
+
+---
+
+## Related
+
+**[dns-bench](https://github.com/afif25fradana/dns-bench)** — measures DNS latency, jitter, and packet loss across public resolvers from your actual Windows connection and recommends the fastest stable pair.
