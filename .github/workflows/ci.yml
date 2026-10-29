@@ -7,147 +7,145 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
-    name: Test on Windows (${{ matrix.ps-engine }})
+  validate:
+    name: Validate Script Syntax & Invariants
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        ps-engine: [powershell, pwsh]
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 1. Validate AST Syntax & CRLF Endings
-        shell: ${{ matrix.ps-engine }}
+      - name: Verify CRLF & AST Syntax (PowerShell Core 7)
+        shell: pwsh
         run: |
           $scripts = @("organize_by_type.bat", "rename_screenshots.bat", "undo_last_action.bat")
           foreach ($s in $scripts) {
               $raw = [System.IO.File]::ReadAllText($s)
-              
-              # Verify CRLF line endings required for cmd.exe
               if (-not $raw.Contains([char]13)) {
                   throw "Assertion Failed: $s is missing CRLF line endings."
               }
-              
-              # Verify AST syntax
               $errors = $null
               [System.Management.Automation.Language.Parser]::ParseInput($raw, [ref]$null, [ref]$errors)
               if ($errors.Count -gt 0) {
                   throw "AST Parse Error in $s: $($errors[0].Message)"
               }
-              Write-Host "PASSED: $s syntax and CRLF valid." -ForegroundColor Green
+              Write-Host "PASSED: $s syntax and CRLF valid in pwsh." -ForegroundColor Green
           }
 
-      - name: 2. Test organize_by_type.bat & download isolation
+      - name: Verify CRLF & AST Syntax (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $scripts = @("organize_by_type.bat", "rename_screenshots.bat", "undo_last_action.bat")
+          foreach ($s in $scripts) {
+              $raw = [System.IO.File]::ReadAllText($s)
+              if (-not $raw.Contains([char]13)) {
+                  throw "Assertion Failed: $s is missing CRLF line endings."
+              }
+              $errors = $null
+              [System.Management.Automation.Language.Parser]::ParseInput($raw, [ref]$null, [ref]$errors)
+              if ($errors.Count -gt 0) {
+                  throw "AST Parse Error in $s: $($errors[0].Message)"
+              }
+              Write-Host "PASSED: $s syntax and CRLF valid in powershell 5.1." -ForegroundColor Green
+          }
+
+  integration:
+    name: Functional Regression Suite (cmd.exe)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 1. Test organize_by_type.bat & download isolation
         shell: cmd
         run: |
           mkdir test_org
           copy *.bat test_org\
           cd test_org
           
-          :: Create sample files
           echo pdf content > doc1.pdf
           echo zip content > archive.zip
           echo mp4 content > video.mp4
           echo unknown content > mystery.xyz
           
-          :: Create partial download files that must stay untouched
           echo partial > download.crdownload
           echo partial > stream.part
           echo partial > large.download
           echo partial > chunk.aria2
           echo temp > cache.tmp
           
-          :: Run organize
           echo y | organize_by_type.bat
           
-          :: Assert categorized files exist
           if not exist "Documents\doc1.pdf" exit /b 1
           if not exist "Compressed\archive.zip" exit /b 1
           if not exist "Videos\video.mp4" exit /b 1
           if not exist "Others\mystery.xyz" exit /b 1
           
-          :: Assert active downloads were NOT moved
           if not exist "download.crdownload" exit /b 1
           if not exist "stream.part" exit /b 1
           if not exist "large.download" exit /b 1
           if not exist "chunk.aria2" exit /b 1
           if not exist "cache.tmp" exit /b 1
           
-          :: Test undo organize
           echo y | undo_last_action.bat
           
-          :: Assert restored to root
           if not exist "doc1.pdf" exit /b 1
           if not exist "archive.zip" exit /b 1
           if not exist "video.mp4" exit /b 1
           if not exist "mystery.xyz" exit /b 1
           
-          :: Assert category folders were pruned
           if exist "Documents" exit /b 1
           if exist "Compressed" exit /b 1
           if exist "Videos" exit /b 1
           if exist "Others" exit /b 1
           
-          :: Assert source log rotated
           dir /b *.undone | findstr /i "organize_log_" > nul
           if errorlevel 1 exit /b 1
           
           cd ..
           rmdir /s /q test_org
-          echo PASSED: organize_by_type and undo organize integration verified.
+          echo PASSED: organize_by_type and undo organize verified.
 
-      - name: 3. Test rename_screenshots.bat & undo rename
+      - name: 2. Test rename_screenshots.bat & undo rename
         shell: cmd
         run: |
           mkdir test_ren
           copy *.bat test_ren\
           cd test_ren
           
-          :: Create sample screenshot files
           echo png data > screenshot_one.png
           echo jpg data > photo_two.jpg
           
-          :: Run rename
           echo y | rename_screenshots.bat
           
-          :: Assert files were renamed to timestamp format
           dir /b *.png | findstr /r "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]-[0-9][0-9]-[0-9][0-9]\.png$" > nul
           if errorlevel 1 exit /b 1
           
           dir /b *.jpg | findstr /r "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]-[0-9][0-9]-[0-9][0-9]\.jpg$" > nul
           if errorlevel 1 exit /b 1
           
-          :: Test undo rename
           echo y | undo_last_action.bat
           
-          :: Assert original names restored
           if not exist "screenshot_one.png" exit /b 1
           if not exist "photo_two.jpg" exit /b 1
           
-          :: Assert source log rotated
           dir /b *.undone | findstr /i "rename_log_" > nul
           if errorlevel 1 exit /b 1
           
           cd ..
           rmdir /s /q test_ren
-          echo PASSED: rename_screenshots and undo rename integration verified.
+          echo PASSED: rename_screenshots and undo rename verified.
 
-      - name: 4. Test collision barrier in undo_last_action.bat
+      - name: 3. Test collision barrier in undo_last_action.bat
         shell: cmd
         run: |
           mkdir test_col
           copy *.bat test_col\
           cd test_col
           
-          :: Setup collision scenario
           mkdir Documents
           echo moved content > Documents\file.txt
           echo new content that occupies original spot > file.txt
           
-          :: Create mock log
           (
             echo organize_by_type.bat - Run: 2026-10-29 07:00:00
             echo Target folder: %CD%
@@ -160,10 +158,8 @@ jobs:
             echo   (none)
           ) > organize_log_20261029_070000.txt
           
-          :: Run undo - must detect collision and refuse to overwrite
           echo y | undo_last_action.bat
           
-          :: Verify root file was NOT overwritten
           type file.txt | findstr /c:"new content that occupies original spot" > nul
           if errorlevel 1 exit /b 1
           
