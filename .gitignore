@@ -12,3 +12,7 @@ desktop.ini
 *.tmp
 .vscode/
 .idea/
+
+# Execution and undo logs
+*_log_*.txt
+*.txt.undone

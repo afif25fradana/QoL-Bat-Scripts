@@ -71,10 +71,15 @@ Get-ChildItem -LiteralPath $targetDir | ForEach-Object {
 
 $filesToProcess = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
 $skippedReservedNames = [System.Collections.Generic.List[string]]::new()
+$skippedReparsePoints = [System.Collections.Generic.List[string]]::new()
 
 foreach ($file in $imageFiles) {
     if (Test-ReservedName -Name $file.Name) {
         $skippedReservedNames.Add($file.Name)
+        continue
+    }
+    if ($file.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+        $skippedReparsePoints.Add($file.Name)
         continue
     }
     if ($file.Name -match $alreadyFormattedRegex) {
@@ -91,6 +96,13 @@ if ($skippedReservedNames.Count -gt 0) {
     }
     Write-Host ""
 }
+if ($skippedReparsePoints.Count -gt 0) {
+    Write-Host "SKIPPED (symbolic link or junction, left in place):" -ForegroundColor DarkYellow
+    foreach ($name in $skippedReparsePoints) {
+        Write-Host "  - $(Get-SafeDisplayName $name)" -ForegroundColor DarkYellow
+    }
+    Write-Host ""
+}
 
 if ($filesToProcess.Count -eq 0) {
     Write-Host "All $($imageFiles.Count) image file(s) are already formatted correctly. Nothing to rename." -ForegroundColor DarkGreen
@@ -99,16 +111,26 @@ if ($filesToProcess.Count -eq 0) {
     return
 }
 
-$exifAvailable = $false
-try {
-    Add-Type -AssemblyName System.Drawing -ErrorAction Stop
-    $exifAvailable = $null -ne (@([System.AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetName().Name -eq 'System.Drawing' }))
-} catch {
-    $exifAvailable = $false
+$hasJpegs = $false
+foreach ($f in $filesToProcess) {
+    if ($f.Extension -ieq ".jpg" -or $f.Extension -ieq ".jpeg") {
+        $hasJpegs = $true
+        break
+    }
 }
-if (-not $exifAvailable) {
-    Write-Host "NOTE: System.Drawing (GDI+) is unavailable - EXIF Date Taken cannot be read; using Last Modified time for all images." -ForegroundColor DarkYellow
-    Write-Host ""
+
+$exifAvailable = $false
+if ($hasJpegs) {
+    try {
+        Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+        $exifAvailable = $null -ne ('System.Drawing.Image' -as [type])
+    } catch {
+        $exifAvailable = $false
+    }
+    if (-not $exifAvailable) {
+        Write-Host "NOTE: System.Drawing (GDI+) is unavailable - EXIF Date Taken cannot be read; using Last Modified time for all images." -ForegroundColor DarkYellow
+        Write-Host ""
+    }
 }
 
 # Attempt to extract EXIF Date Taken (DateTimeOriginal/DateTimeDigitized) for photo files

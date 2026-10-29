@@ -65,7 +65,11 @@ $ignoredFileNames = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase
 )
 $ignoredExtensions = [System.Collections.Generic.HashSet[string]]::new(
-    [string[]]@(".bat", ".cmd", ".ps1", ".sh", ".lnk", ".url"),
+    [string[]]@(
+        ".bat", ".cmd", ".ps1", ".sh", ".lnk", ".url",
+        ".crdownload", ".part", ".partial", ".opdownload",
+        ".download", ".aria2", ".tmp"
+    ),
     [System.StringComparer]::OrdinalIgnoreCase
 )
 
@@ -76,7 +80,7 @@ $allLooseFiles = @(Get-ChildItem -LiteralPath $targetDir -File | Where-Object {
     if ($runningScriptPath -and $_.FullName -eq $runningScriptPath) {
         return $false
     }
-    if ($_.Name -match '^(organize_log_|rename_log_)\d{8}_\d{6}(_\d+)?\.txt$') {
+    if ($_.Name -match '^(organize_log_|rename_log_|undo_log_)\d{8}_\d{6}(_\d+)?\.txt$' -or $_.Name -match '\.txt\.undone$') {
         return $false
     }
     if ($ignoredFileNames.Contains($_.Name)) {
